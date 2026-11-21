@@ -1,0 +1,95 @@
+﻿@page "/"
+@using ClosedXML.Excel
+@inject IJSRuntime JS
+
+<h3>Excel-Maske (Zeile 2 bearbeiten)</h3>
+
+<!-- 1. Datei auswählen (PC, iPhone-Dateien oder OneDrive) -->
+<div class="mb-3">
+    <InputFile OnChange="ExcelLaden" accept=".xlsx" class="form-control" />
+</div>
+
+@if (felder.Count > 0)
+{
+    <!-- 2. Dynamische Eingabemaske aus Zeile 1 (Schema) -->
+    @for (int i = 0; i < felder.Count; i++)
+    {
+        var index = i;
+        <div class="mb-3">
+            <label class="form-label fw-bold">@felder[index].SpaltenName</label>
+            <input type="text" class="form-control" @bind="felder[index].Wert" />
+        </div>
+    }
+
+    <!-- 3. Speichern-Button -->
+    <button class="btn btn-primary btn-lg w-100" @onclick="ExcelSpeichern">
+        Änderungen speichern & herunterladen
+    </button>
+}
+
+@code {
+    // Hilfsklasse für ein Feld (Spaltenüberschrift + Zellwert)
+    class FeldItem
+    {
+        public int SpaltenNummer { get; set; }
+        public string SpaltenName { get; set; } = "";
+        public string Wert { get; set; } = "";
+    }
+
+    private List<FeldItem> felder = new();
+    private byte[]? originalDateiBytes;
+    private string dateiName = "daten.xlsx";
+
+    private async Task ExcelLaden(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        dateiName = file.Name;
+
+        // Datei in den Arbeitsspeicher laden (max. 10 MB)
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(10 * 1024 * 1024).CopyToAsync(ms);
+        originalDateiBytes = ms.ToArray();
+
+        // Excel mit ClosedXML öffnen
+        ms.Position = 0;
+        using var workbook = new XLWorkbook(ms);
+        var sheet = workbook.Worksheet(1);
+
+        felder.Clear();
+        int letzteSpalte = sheet.Row(1).LastCellUsed()?.Address.ColumnNumber ?? 0;
+
+        // Zeile 1 = Schema (Feldnamen), Zeile 2 = erster Datensatz
+        for (int col = 1; col <= letzteSpalte; col++)
+        {
+            felder.Add(new FeldItem
+            {
+                SpaltenNummer = col,
+                SpaltenName = sheet.Cell(1, col).GetString(),
+                Wert = sheet.Cell(2, col).GetString()
+            });
+        }
+    }
+
+    private async Task ExcelSpeichern()
+    {
+        if (originalDateiBytes == null) return;
+
+        using var ms = new MemoryStream(originalDateiBytes);
+        using var workbook = new XLWorkbook(ms);
+        var sheet = workbook.Worksheet(1);
+
+        // Geänderte Werte in Zeile 2 zurückschreiben
+        foreach (var feld in felder)
+        {
+            sheet.Cell(2, feld.SpaltenNummer).Value = feld.Wert;
+        }
+
+        // Neue Excel-Datei im Speicher erzeugen und herunterladen
+        using var outStream = new MemoryStream();
+        workbook.SaveAs(outStream);
+        outStream.Position = 0;
+
+        using var streamRef = new DotNetStreamReference(outStream);
+        await JS.InvokeVoidAsync("downloadFileFromStream", dateiName, streamRef);
+    }
+}
