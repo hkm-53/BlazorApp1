@@ -8,3 +8,30 @@ permissions:
   contents: read
   pages: write
   id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code laden
+        uses: actions/checkout@v4
+
+      - name: .NET einrichten
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Blazor veröffentlichen
+        run: dotnet publish -c Release -o release
+
+      - name: base href für GitHub Pages anpassen
+        run: sed -i 's|<base href="/" />|<base href="/BlazorApp1/" />|g' release/wwwroot/index.html
+
+      - name: Für GitHub Pages vorbereiten
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: release/wwwroot
+
+      - name: Auf GitHub Pages veröffentlichen
+        id: deployment
+        uses: actions/deploy-pages@v4
