@@ -19,47 +19,85 @@
 </head>
 
 <script>
-                window.downloadFileFromStream = async (fileName, contentStreamReference) => {
-                    const arrayBuffer = await contentStreamReference.arrayBuffer();
-                    const blob = new Blob([arrayBuffer]);
-                    const url = URL.createObjectURL(blob);
-                    const anchorElement = document.createElement('a');
-                    anchorElement.href = url;
-                    anchorElement.download = fileName ?? 'bearbeitet.xlsx';
-                    anchorElement.click();
-                    anchorElement.remove();
-                    URL.revokeObjectURL(url);
-                }
+                    window.downloadFileFromStream = async (fileName, contentStreamReference) => {
+                        const arrayBuffer = await contentStreamReference.arrayBuffer();
+                        const blob = new Blob([arrayBuffer]);
+                        const url = URL.createObjectURL(blob);
+                        const anchorElement = document.createElement('a');
+                        anchorElement.href = url;
+                        anchorElement.download = fileName ?? 'bearbeitet.xlsx';
+                        anchorElement.click();
+                        anchorElement.remove();
+                        URL.revokeObjectURL(url);
+                    }
 </script>
 
 <script src="https://google.com" async defer></script>
+<script>
+            window.googleDriveToken = null;
+
+            window.googleLogin = function (clientId) {
+                return new Promise((resolve, reject) => {
+                    const client = google.accounts.oauth2.initTokenClient({
+                        client_id: clientId,
+                        scope: 'https://googleapis.com',
+                        callback: (response) => {
+                            if (response.error) {
+                                reject(response.error);
+                            } else {
+                                window.googleDriveToken = response.access_token;
+                                resolve(response.access_token);
+                            }
+                        }
+                    });
+                    client.requestAccessToken();
+                });
+            };
+
+            window.getGoogleToken = function () {
+                return window.googleDriveToken;
+            };
+</script>
+
+
 <script>
         window.googleDriveToken = null;
 
         window.googleLogin = function (clientId) {
             return new Promise((resolve, reject) => {
-                const client = google.accounts.oauth2.initTokenClient({
-                    client_id: clientId,
-                    scope: 'https://googleapis.com',
-                    callback: (response) => {
-                        if (response.error) {
-                            reject(response.error);
-                        } else {
-                            window.googleDriveToken = response.access_token;
-                            resolve(response.access_token);
-                        }
+                const startLogin = () => {
+                    if (typeof google === 'undefined' || !google.accounts) {
+                        reject("Google-Skript konnte nicht geladen werden (Bitte Safari nicht im Privat-Modus nutzen).");
+                        return;
                     }
-                });
-                client.requestAccessToken();
-            });
-        };
+                    const client = google.accounts.oauth2.initTokenClient({
+                        client_id: clientId,
+                        scope: 'https://googleapis.com',
+                        callback: (response) => {
+                            if (response.error) {
+                                reject(response.error);
+                            } else {
+                                window.googleDriveToken = response.access_token;
+                                resolve(response.access_token);
+                            }
+                        }
+                    });
+                    client.requestAccessToken();
+                };
 
-        window.getGoogleToken = function () {
-            return window.googleDriveToken;
+                if (typeof google !== 'undefined' && google.accounts) {
+                    startLogin();
+                } else {
+                    const script = document.createElement('script');
+                    script.src = 'https://google.com';
+                    script.onload = startLogin;
+                    script.onerror = () => reject("Google-Server blockiert (Privat-Modus oder Werbeblocker aktiv).");
+                    document.head.appendChild(script);
+                }
+            });
         };
 </script>
 
-<script src="https://google.com"></script>
 
 
 <body>
