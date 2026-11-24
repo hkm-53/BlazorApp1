@@ -1,12 +1,12 @@
 ﻿@page "/"
 @using ClosedXML.Excel
 @inject IJSRuntime JS
-
 @inject HttpClient Http
+@inject NavigationManager NavManager
 
+<h3>Erfassung Energie (Tagesdaten)</h3>
 
-<h3>Excel-Maske (Zeile 2 bearbeiten)</h3>
-
+<!-- Google Drive Verbindungstest -->
 <div class="p-3 mb-3 border rounded bg-light">
     <h5>Google Drive Verbindungstest</h5>
     <button class="btn btn-success" @onclick="TestGoogleDrive">
@@ -14,18 +14,29 @@
     </button>
     @if (!string.IsNullOrEmpty(statusText))
     {
-        <div class="alert alert-info mt-3">@statusText</div>
+        <div class="alert alert-info mt-3" style="word-break: break-all;">@statusText</div>
     }
 </div>
 
-<!-- 1. Datei auswählen (PC, iPhone-Dateien oder OneDrive) -->
+<!-- Lokale Datei auswählen (Notfall / Test) -->
 <div class="mb-3">
     <InputFile OnChange="ExcelLaden" accept=".xlsx" class="form-control" />
 </div>
 
-@if (felder.Count > 0)
+@if (alleZeilen.Count > 0)
 {
-    <!-- 2. Dynamische Eingabemaske aus Zeile 1 (Schema) -->
+    <div class="mb-3 p-2 bg-light border rounded">
+        <label class="form-label fw-bold">Datensatz / Tag auswählen (Zeile @aktuelleZeile):</label>
+        <select class="form-select" @onchange="ZeileWechseln">
+            @foreach (var zeile in alleZeilen)
+            {
+                <option value="@zeile.ZeilenNummer" selected="@(zeile.ZeilenNummer == aktuelleZeile)">
+                    Zeile @zeile.ZeilenNummer: @zeile.AnzeigeText
+                </option>
+            }
+        </select>
+    </div>
+
     @for (int i = 0; i < felder.Count; i++)
     {
         var index = i;
@@ -35,14 +46,17 @@
         </div>
     }
 
-    <!-- 3. Speichern-Button -->
-    <button class="btn btn-primary btn-lg w-100" @onclick="ExcelSpeichern">
-        Änderungen speichern & herunterladen
+    <button class="btn btn-primary btn-lg w-100 mb-5" @onclick="ExcelSpeichern">
+        Speichern als @GeneriereZielDateiname()
     </button>
 }
 
 @code {
-    // Hilfsklasse für ein Feld (Spaltenüberschrift + Zellwert)
+    private const string ClientId = "://googleusercontent.com";
+    private const string RedirectUri = "https://github.io";
+    private string statusText = "";
+    private string? googleToken = null;
+
     class FeldItem
     {
         public int SpaltenNummer { get; set; }
@@ -50,72 +64,60 @@
         public string Wert { get; set; } = "";
     }
 
+    class ZeilenInfo
+    {
+        public int ZeilenNummer { get; set; }
+        public string AnzeigeText { get; set; } = "";
+    }
+
     private List<FeldItem> felder = new();
+    private List<ZeilenInfo> alleZeilen = new();
     private byte[]? originalDateiBytes;
-    private string dateiName = "daten.xlsx";
+    private int aktuelleZeile = 2;
 
-    private async Task ExcelLaden(InputFileChangeEventArgs e)
+    protected override async Task OnInitializedAsync()
     {
-        var file = e.File;
-        dateiName = file.Name;
-
-        // Datei in den Arbeitsspeicher laden (max. 10 MB)
-        using var ms = new MemoryStream();
-        await file.OpenReadStream(10 * 1024 * 1024).CopyToAsync(ms);
-        originalDateiBytes = ms.ToArray();
-
-        // Excel mit ClosedXML öffnen
-        ms.Position = 0;
-        using var workbook = new XLWorkbook(ms);
-        var sheet = workbook.Worksheet(1);
-
-        felder.Clear();
-        int letzteSpalte = sheet.Row(1).LastCellUsed()?.Address.ColumnNumber ?? 0;
-
-        // Zeile 1 = Schema (Feldnamen), Zeile 2 = erster Datensatz
-        for (int col = 1; col <= letzteSpalte; col++)
+        var uri = new Uri(NavManager.Uri);
+        if (!string.IsNullOrEmpty(uri.Fragment) && uri.Fragment.Contains("access_token="))
         {
-            felder.Add(new FeldItem
+            var parts = uri.Fragment.TrimStart('#').Split('&');
+            foreach (var part in parts)
             {
-                SpaltenNummer = col,
-                SpaltenName = sheet.Cell(1, col).GetString(),
-                Wert = sheet.Cell(2, col).GetString()
-            });
+                if (part.StartsWith("access_token="))
+                {
+                    googleToken = Uri.UnescapeDataString(part.Substring("access_token=".Length));
+                    break;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(googleToken))
+            {
+                await SucheEnergieDatei(googleToken);
+            }
         }
     }
-
-    private async Task ExcelSpeichern()
-    {
-        if (originalDateiBytes == null) return;
-
-        using var ms = new MemoryStream(originalDateiBytes);
-        using var workbook = new XLWorkbook(ms);
-        var sheet = workbook.Worksheet(1);
-
-        // Geänderte Werte in Zeile 2 zurückschreiben
-        foreach (var feld in felder)
-        {
-            sheet.Cell(2, feld.SpaltenNummer).Value = feld.Wert;
-        }
-
-        // Neue Excel-Datei im Speicher erzeugen und herunterladen
-        using var outStream = new MemoryStream();
-        workbook.SaveAs(outStream);
-        outStream.Position = 0;
-
-        using var streamRef = new DotNetStreamReference(outStream);
-        await JS.InvokeVoidAsync("downloadFileFromStream", dateiName, streamRef);
-    }
-    private const string ClientId = "://googleusercontent.com";
-    private string statusText = "";
 
     private async Task TestGoogleDrive()
     {
+        if (!string.IsNullOrEmpty(googleToken))
+        {
+            await SucheEnergieDatei(googleToken);
+            return;
+        }
+
+        string authUrl = $"https://google.com" +
+                         $"?client_id={Uri.EscapeDataString(ClientId)}" +
+                         $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}" +
+                         $"&response_type=token" +
+                         $"&scope={Uri.EscapeDataString("https://googleapis.com")}";
+
+        NavManager.NavigateTo(authUrl, forceLoad: true);
+    }
+
+    private async Task SucheEnergieDatei(string token)
+    {
         try
         {
-            statusText = "Bitte im Google-Fenster anmelden...";
-            string token = await JS.InvokeAsync<string>("googleLogin", ClientId);
-
             statusText = "Angemeldet! Suche Erf_Energie_2611.xlsx...";
             var request = new HttpRequestMessage(HttpMethod.Get,
                 "https://googleapis.com");
@@ -139,4 +141,86 @@
         }
     }
 
+    private string GeneriereZielDateiname() => $"Erf_Energie_{DateTime.Now:yyMMdd}.xlsx";
+
+    private async Task ExcelLaden(InputFileChangeEventArgs e)
+    {
+        using var ms = new MemoryStream();
+        await e.File.OpenReadStream(10 * 1024 * 1024).CopyToAsync(ms);
+        originalDateiBytes = ms.ToArray();
+
+        ms.Position = 0;
+        using var workbook = new XLWorkbook(ms);
+        var sheet = workbook.Worksheet(1);
+
+        alleZeilen.Clear();
+        int letzteZeile = sheet.LastRowUsed()?.RowNumber() ?? 2;
+        string heuteText = DateTime.Now.ToString("dd.MM.yyyy");
+        aktuelleZeile = 2;
+
+        for (int row = 2; row <= letzteZeile; row++)
+        {
+            string spalte1 = sheet.Cell(row, 1).GetString();
+            string spalte2 = sheet.Cell(row, 2).GetString();
+            string anzeige = $"{spalte1} {spalte2}".Trim();
+            if (string.IsNullOrEmpty(anzeige)) anzeige = "(Leer)";
+
+            alleZeilen.Add(new ZeilenInfo { ZeilenNummer = row, AnzeigeText = anzeige });
+
+            if (spalte1.Contains(heuteText))
+            {
+                aktuelleZeile = row;
+            }
+        }
+
+        LadeZeilenFelder(sheet, aktuelleZeile);
+    }
+
+    private void ZeileWechseln(ChangeEventArgs e)
+    {
+        if (originalDateiBytes == null || !int.TryParse(e.Value?.ToString(), out int gewaehlteZeile)) return;
+
+        aktuelleZeile = gewaehlteZeile;
+        using var ms = new MemoryStream(originalDateiBytes);
+        using var workbook = new XLWorkbook(ms);
+        LadeZeilenFelder(workbook.Worksheet(1), aktuelleZeile);
+    }
+
+    private void LadeZeilenFelder(IXLWorksheet sheet, int zeile)
+    {
+        felder.Clear();
+        int letzteSpalte = sheet.Row(1).LastCellUsed()?.Address.ColumnNumber ?? 0;
+
+        for (int col = 1; col <= letzteSpalte; col++)
+        {
+            felder.Add(new FeldItem
+            {
+                SpaltenNummer = col,
+                SpaltenName = sheet.Cell(1, col).GetString(),
+                Wert = sheet.Cell(zeile, col).GetString()
+            });
+        }
+    }
+
+    private async Task ExcelSpeichern()
+    {
+        if (originalDateiBytes == null) return;
+
+        using var ms = new MemoryStream(originalDateiBytes);
+        using var workbook = new XLWorkbook(ms);
+        var sheet = workbook.Worksheet(1);
+
+        foreach (var feld in felder)
+        {
+            sheet.Cell(aktuelleZeile, feld.SpaltenNummer).Value = feld.Wert;
+        }
+
+        using var outStream = new MemoryStream();
+        workbook.SaveAs(outStream);
+        originalDateiBytes = outStream.ToArray();
+
+        outStream.Position = 0;
+        using var streamRef = new DotNetStreamReference(outStream);
+        await JS.InvokeVoidAsync("downloadFileFromStream", GeneriereZielDateiname(), streamRef);
+    }
 }
