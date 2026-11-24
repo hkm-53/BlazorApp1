@@ -2,7 +2,21 @@
 @using ClosedXML.Excel
 @inject IJSRuntime JS
 
+@inject HttpClient Http
+
+
 <h3>Excel-Maske (Zeile 2 bearbeiten)</h3>
+
+<div class="p-3 mb-3 border rounded bg-light">
+    <h5>Google Drive Verbindungstest</h5>
+    <button class="btn btn-success" @onclick="TestGoogleDrive">
+        1. Mit Google Drive verbinden &amp; Datei suchen
+    </button>
+    @if (!string.IsNullOrEmpty(statusText))
+    {
+        <div class="alert alert-info mt-3">@statusText</div>
+    }
+</div>
 
 <!-- 1. Datei auswählen (PC, iPhone-Dateien oder OneDrive) -->
 <div class="mb-3">
@@ -92,4 +106,37 @@
         using var streamRef = new DotNetStreamReference(outStream);
         await JS.InvokeVoidAsync("downloadFileFromStream", dateiName, streamRef);
     }
+    private const string ClientId = "://googleusercontent.com";
+    private string statusText = "";
+
+    private async Task TestGoogleDrive()
+    {
+        try
+        {
+            statusText = "Bitte im Google-Fenster anmelden...";
+            string token = await JS.InvokeAsync<string>("googleLogin", ClientId);
+
+            statusText = "Angemeldet! Suche Erf_Energie_2611.xlsx...";
+            var request = new HttpRequestMessage(HttpMethod.Get,
+                "https://googleapis.com");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            var response = await Http.SendAsync(request);
+            string json = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                statusText = $"ERFOLG! Antwort von Google Drive: {json}";
+            }
+            else
+            {
+                statusText = $"Fehler von Google: {response.StatusCode} - {json}";
+            }
+        }
+        catch (Exception ex)
+        {
+            statusText = $"Fehler: {ex.Message}";
+        }
+    }
+
 }
