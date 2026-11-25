@@ -1,5 +1,6 @@
 ﻿@page "/"
 @using ClosedXML.Excel
+@using System.Text.Json
 @inject IJSRuntime JS
 @inject HttpClient Http
 @inject NavigationManager NavManager
@@ -7,21 +8,18 @@
 <h3>Erfassung Energie (Tagesdaten)</h3>
 
 <div class="p-3 mb-3 border rounded bg-light">
-    <h5>Google Drive Verbindungstest</h5>
+    <h5>Google Drive Verbindung</h5>
 
     @if (string.IsNullOrEmpty(googleToken))
     {
         <a href="@GeneriereGoogleAuthUrl()" class="btn btn-success btn-lg w-100">
             1. Mit Google Drive verbinden
         </a>
-        <div class="small text-muted mt-2" style="word-break: break-all;">
-            Ziel-URL: @GeneriereGoogleAuthUrl()
-        </div>
     }
     else
     {
-        <button class="btn btn-primary w-100" @onclick="() => SucheEnergieDatei(googleToken)">
-            2. Datei Erf_Energie_2611 auf Google Drive suchen
+        <button class="btn btn-primary w-100" @onclick="LadeVonGoogleDrive">
+            Datei aus Google Drive neu laden
         </button>
     }
 
@@ -32,13 +30,14 @@
 </div>
 
 <div class="mb-3">
+    <label class="form-label small text-muted">Alternativ lokale Datei (Notfall / Test):</label>
     <InputFile OnChange="ExcelLaden" accept=".xlsx" class="form-control" />
 </div>
 
 @if (alleZeilen.Count > 0)
 {
     <div class="mb-3 p-2 bg-light border rounded">
-        <label class="form-label fw-bold">Datensatz / Tag auswählen (Zeile @aktuelleZeile):</label>
+        <label class="form-label fw-bold">Datensatz / Tag auswählen (aktuell Zeile @aktuelleZeile):</label>
         <select class="form-select" @onchange="ZeileWechseln">
             @foreach (var zeile in alleZeilen)
             {
@@ -58,8 +57,8 @@
         </div>
     }
 
-    <button class="btn btn-primary btn-lg w-100 mb-5" @onclick="ExcelSpeichern">
-        Speichern als @GeneriereZielDateiname()
+    <button class="btn btn-primary btn-lg w-100 mb-5" @onclick="SpeichernAufGoogleDrive">
+        @(string.IsNullOrEmpty(aktuelleDriveDateiId) ? $"Lokal speichern ({GeneriereZielDateiname()})" : $"In Google Drive überschreiben ({geladenerDateiName})")
     </button>
 }
 
@@ -67,6 +66,8 @@
     private const string ClientNummer = "532480087224-7cv3n70c8jechg9gnn57asvc0hesdvm9";
     private string statusText = "";
     private string? googleToken = null;
+    private string? aktuelleDriveDateiId = null;
+    private string geladenerDateiName = "Erf_Energie_2611.xlsx";
 
     class FeldItem
     {
@@ -103,7 +104,7 @@
 
             if (!string.IsNullOrEmpty(googleToken))
             {
-                await SucheEnergieDatei(googleToken);
+                await LadeVonGoogleDrive();
             }
         }
     }
@@ -122,43 +123,65 @@
                "&scope=" + Uri.EscapeDataString(bereich);
     }
 
-    private async Task SucheEnergieDatei(string token)
+    private async Task LadeVonGoogleDrive()
     {
+        if (string.IsNullOrEmpty(googleToken)) return;
+
         try
         {
-            statusText = "Angemeldet! Suche Erf_Energie_2611.xlsx...";
-            string apiBasis = "https:" + "//www." + "googleapis.com" + "/drive/v3/files";
-            string apiUrl = apiBasis + "?q=name%20contains%20'Erf_Energie_2611'%20and%20trashed%3Dfalse&fields=files(id,name,size)";
-            var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            statusText = "Suche und lade Erf_Energie_2611.xlsx aus Google Drive...";
 
-            var response = await Http.SendAsync(request);
-            string json = await response.Content.ReadAsStringAsync();
+            string suchUrl = "https:" + "//www." + "googleapis.com" + "/drive/v3/files?q=name%20contains%20'Erf_Energie_2611'%20and%20trashed%3Dfalse&fields=files(id,name)";
+            var suchReq = new HttpRequestMessage(HttpMethod.Get, suchUrl);
+            suchReq.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", googleToken);
+            var suchRes = await Http.SendAsync(suchReq);
+            string json = await suchRes.Content.ReadAsStringAsync();
 
-            if (response.IsSuccessStatusCode)
+            using var doc = JsonDocument.Parse(json);
+            var files = doc.RootElement.GetProperty("files");
+            if (files.GetArrayLength() == 0)
             {
-                statusText = $"ERFOLG! Antwort von Google Drive: {json}";
+                statusText = "Datei Erf_Energie_2611 wurde auf Google Drive nicht gefunden.";
+                return;
             }
-            else
+
+            aktuelleDriveDateiId = files[0].GetProperty("id").GetString();
+            geladenerDateiName = files[0].GetProperty("name").GetString() ?? "Erf_Energie_2611.xlsx";
+
+            string downloadUrl = "https:" + "//www." + "googleapis.com" + $"/drive/v3/files/{aktuelleDriveDateiId}?alt=media";
+            var dlReq = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+            dlReq.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", googleToken);
+            var dlRes = await Http.SendAsync(dlReq);
+
+            if (!dlRes.IsSuccessStatusCode)
             {
-                statusText = $"Fehler von Google: {response.StatusCode} - {json}";
+                statusText = $"Fehler beim Herunterladen: {dlRes.StatusCode}";
+                return;
             }
+
+            originalDateiBytes = await dlRes.Content.ReadAsByteArrayAsync();
+            ExcelInMaskeLaden(originalDateiBytes);
+            statusText = $"Geladen: {geladenerDateiName} (bitte oben gewünschten Datensatz wählen)";
         }
         catch (Exception ex)
         {
-            statusText = $"Fehler: {ex.Message}";
+            statusText = $"Fehler beim Laden: {ex.Message}";
         }
     }
 
-    private string GeneriereZielDateiname() => $"Erf_Energie_{DateTime.Now:yyMMdd}.xlsx";
-
     private async Task ExcelLaden(InputFileChangeEventArgs e)
     {
+        aktuelleDriveDateiId = null;
+        geladenerDateiName = e.File.Name;
         using var ms = new MemoryStream();
         await e.File.OpenReadStream(10 * 1024 * 1024).CopyToAsync(ms);
         originalDateiBytes = ms.ToArray();
+        ExcelInMaskeLaden(originalDateiBytes);
+    }
 
-        ms.Position = 0;
+    private void ExcelInMaskeLaden(byte[] daten)
+    {
+        using var ms = new MemoryStream(daten);
         using var workbook = new XLWorkbook(ms);
         var sheet = workbook.Worksheet(1);
 
@@ -167,6 +190,7 @@
         string heuteText = DateTime.Now.ToString("dd.MM.yyyy");
         aktuelleZeile = 3;
 
+        // Startet erst ab Zeile 3 (Zeile 1 = Überschrift, Zeile 2 = Vormonat)
         for (int row = 3; row <= letzteZeile; row++)
         {
             string spalte1 = sheet.Cell(row, 1).GetString();
@@ -211,7 +235,9 @@
         }
     }
 
-    private async Task ExcelSpeichern()
+    private string GeneriereZielDateiname() => $"Erf_Energie_{DateTime.Now:yyMMdd}.xlsx";
+
+    private async Task SpeichernAufGoogleDrive()
     {
         if (originalDateiBytes == null) return;
 
@@ -227,6 +253,34 @@
         using var outStream = new MemoryStream();
         workbook.SaveAs(outStream);
         originalDateiBytes = outStream.ToArray();
+
+        if (!string.IsNullOrEmpty(googleToken) && !string.IsNullOrEmpty(aktuelleDriveDateiId))
+        {
+            try
+            {
+                statusText = "Speichere direkt auf Google Drive...";
+                string uploadUrl = "https:" + "//www." + "googleapis.com" + $"/upload/drive/v3/files/{aktuelleDriveDateiId}?uploadType=media";
+                var upReq = new HttpRequestMessage(HttpMethod.Patch, uploadUrl);
+                upReq.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", googleToken);
+                upReq.Content = new ByteArrayContent(originalDateiBytes);
+                upReq.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+                var upRes = await Http.SendAsync(upReq);
+                if (upRes.IsSuccessStatusCode)
+                {
+                    statusText = $"ERFOLG! Zeile {aktuelleZeile} wurde direkt in {geladenerDateiName} auf Google Drive überschrieben.";
+                    return;
+                }
+                else
+                {
+                    statusText = $"Google Drive Fehler ({upRes.StatusCode}) – starte lokalen Notfall-Download...";
+                }
+            }
+            catch (Exception ex)
+            {
+                statusText = $"Verbindungsfehler ({ex.Message}) – starte lokalen Notfall-Download...";
+            }
+        }
 
         outStream.Position = 0;
         using var streamRef = new DotNetStreamReference(outStream);
