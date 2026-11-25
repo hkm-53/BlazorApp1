@@ -6,7 +6,6 @@
 
 <h3>Erfassung Energie (Tagesdaten)</h3>
 
-<!-- Google Drive Verbindungstest -->
 <div class="p-3 mb-3 border rounded bg-light">
     <h5>Google Drive Verbindungstest</h5>
 
@@ -32,7 +31,6 @@
     }
 </div>
 
-<!-- Lokale Datei auswählen (Notfall / Test) -->
 <div class="mb-3">
     <InputFile OnChange="ExcelLaden" accept=".xlsx" class="form-control" />
 </div>
@@ -66,8 +64,7 @@
 }
 
 @code {
-    private const string ClientId = "://googleusercontent.com";
-    private const string RedirectUri = "https://github.io";
+    private const string ClientNummer = "532480087224-7cv3n70c8jechg9gnn57asvc0hesdvm9";
     private string statusText = "";
     private string? googleToken = null;
 
@@ -113,11 +110,15 @@
 
     private string GeneriereGoogleAuthUrl()
     {
+        string volleClientId = ClientNummer + ".apps.googleusercontent.com";
+        string zielSeite = "https://github.io";
+        string bereich = "https://googleapis.com";
+
         return "https://google.com" +
-               "?client_id=" + Uri.EscapeDataString(ClientId) +
-               "&redirect_uri=" + Uri.EscapeDataString(RedirectUri) +
+               "?client_id=" + Uri.EscapeDataString(volleClientId) +
+               "&redirect_uri=" + Uri.EscapeDataString(zielSeite) +
                "&response_type=token" +
-               "&scope=" + Uri.EscapeDataString("https://googleapis.com");
+               "&scope=" + Uri.EscapeDataString(bereich);
     }
 
     private async Task SucheEnergieDatei(string token)
@@ -125,8 +126,8 @@
         try
         {
             statusText = "Angemeldet! Suche Erf_Energie_2611.xlsx...";
-            var request = new HttpRequestMessage(HttpMethod.Get,
-                "https://googleapis.com");
+            string apiUrl = "https://googleapis.com";
+            var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
             var response = await Http.SendAsync(request);
@@ -164,7 +165,6 @@
         string heuteText = DateTime.Now.ToString("dd.MM.yyyy");
         aktuelleZeile = 3;
 
-        // Startet erst ab Zeile 3 (Zeile 1 = Überschrift, Zeile 2 = Vormonat)
         for (int row = 3; row <= letzteZeile; row++)
         {
             string spalte1 = sheet.Cell(row, 1).GetString();
