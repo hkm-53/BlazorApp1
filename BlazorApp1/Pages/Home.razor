@@ -9,9 +9,23 @@
 <!-- Google Drive Verbindungstest -->
 <div class="p-3 mb-3 border rounded bg-light">
     <h5>Google Drive Verbindungstest</h5>
-    <button class="btn btn-success" @onclick="TestGoogleDrive">
-        1. Mit Google Drive verbinden &amp; Datei suchen
-    </button>
+
+    @if (string.IsNullOrEmpty(googleToken))
+    {
+        <a href="@GeneriereGoogleAuthUrl()" class="btn btn-success btn-lg w-100">
+            1. Mit Google Drive verbinden
+        </a>
+        <div class="small text-muted mt-2" style="word-break: break-all;">
+            Ziel-URL: @GeneriereGoogleAuthUrl()
+        </div>
+    }
+    else
+    {
+        <button class="btn btn-primary w-100" @onclick="() => SucheEnergieDatei(googleToken)">
+            2. Datei Erf_Energie_2611 auf Google Drive suchen
+        </button>
+    }
+
     @if (!string.IsNullOrEmpty(statusText))
     {
         <div class="alert alert-info mt-3" style="word-break: break-all;">@statusText</div>
@@ -73,7 +87,7 @@
     private List<FeldItem> felder = new();
     private List<ZeilenInfo> alleZeilen = new();
     private byte[]? originalDateiBytes;
-    private int aktuelleZeile = 2;
+    private int aktuelleZeile = 3;
 
     protected override async Task OnInitializedAsync()
     {
@@ -97,21 +111,13 @@
         }
     }
 
-    private async Task TestGoogleDrive()
+    private string GeneriereGoogleAuthUrl()
     {
-        if (!string.IsNullOrEmpty(googleToken))
-        {
-            await SucheEnergieDatei(googleToken);
-            return;
-        }
-
-        string authUrl = "https://google.com" +
-                         "?client_id=" + Uri.EscapeDataString(ClientId) +
-                         "&redirect_uri=" + Uri.EscapeDataString(RedirectUri) +
-                         "&response_type=token" +
-                         "&scope=" + Uri.EscapeDataString("https://googleapis.com");
-
-        NavManager.NavigateTo(authUrl, forceLoad: true);
+        return "https://google.com" +
+               "?client_id=" + Uri.EscapeDataString(ClientId) +
+               "&redirect_uri=" + Uri.EscapeDataString(RedirectUri) +
+               "&response_type=token" +
+               "&scope=" + Uri.EscapeDataString("https://googleapis.com");
     }
 
     private async Task SucheEnergieDatei(string token)
@@ -154,11 +160,12 @@
         var sheet = workbook.Worksheet(1);
 
         alleZeilen.Clear();
-        int letzteZeile = sheet.LastRowUsed()?.RowNumber() ?? 2;
+        int letzteZeile = sheet.LastRowUsed()?.RowNumber() ?? 3;
         string heuteText = DateTime.Now.ToString("dd.MM.yyyy");
-        aktuelleZeile = 2;
+        aktuelleZeile = 3;
 
-        for (int row = 2; row <= letzteZeile; row++)
+        // Startet erst ab Zeile 3 (Zeile 1 = Überschrift, Zeile 2 = Vormonat)
+        for (int row = 3; row <= letzteZeile; row++)
         {
             string spalte1 = sheet.Cell(row, 1).GetString();
             string spalte2 = sheet.Cell(row, 2).GetString();
