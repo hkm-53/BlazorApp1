@@ -111,10 +111,11 @@
     private string GeneriereGoogleAuthUrl()
     {
         string volleClientId = ClientNummer + ".apps.googleusercontent.com";
-        string zielSeite = "https://github.io";
-        string bereich = "https://googleapis.com";
+        string authBasis = "https:" + "//accounts." + "google.com" + "/o/oauth2/v2/auth";
+        string zielSeite = "https:" + "//hkm-53." + "github.io" + "/BlazorApp1/";
+        string bereich = "https:" + "//www." + "googleapis.com" + "/auth/drive";
 
-        return "https://google.com" +
+        return authBasis +
                "?client_id=" + Uri.EscapeDataString(volleClientId) +
                "&redirect_uri=" + Uri.EscapeDataString(zielSeite) +
                "&response_type=token" +
@@ -126,7 +127,8 @@
         try
         {
             statusText = "Angemeldet! Suche Erf_Energie_2611.xlsx...";
-            string apiUrl = "https://googleapis.com";
+            string apiBasis = "https:" + "//www." + "googleapis.com" + "/drive/v3/files";
+            string apiUrl = apiBasis + "?q=name%20contains%20'Erf_Energie_2611'%20and%20trashed%3Dfalse&fields=files(id,name,size)";
             var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
@@ -147,6 +149,7 @@
             statusText = $"Fehler: {ex.Message}";
         }
     }
+
 
     private string GeneriereZielDateiname() => $"Erf_Energie_{DateTime.Now:yyMMdd}.xlsx";
 
