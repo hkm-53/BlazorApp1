@@ -105,11 +105,11 @@
             return;
         }
 
-        string authUrl = $"https://google.com" +
-                         $"?client_id={Uri.EscapeDataString(ClientId)}" +
-                         $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}" +
-                         $"&response_type=token" +
-                         $"&scope={Uri.EscapeDataString("https://googleapis.com")}";
+        string authUrl = "https://google.com" +
+                         "?client_id=" + Uri.EscapeDataString(ClientId) +
+                         "&redirect_uri=" + Uri.EscapeDataString(RedirectUri) +
+                         "&response_type=token" +
+                         "&scope=" + Uri.EscapeDataString("https://googleapis.com");
 
         NavManager.NavigateTo(authUrl, forceLoad: true);
     }
