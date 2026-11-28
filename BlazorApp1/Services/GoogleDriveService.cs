@@ -16,9 +16,9 @@ namespace BlazorApp1.Services
         public string GeneriereGoogleAuthUrl()
         {
             string volleClientId = ClientNummer + ".apps.googleusercontent.com";
-            string authBasis = "https:" + "//accounts." + "google.com" + "/o/oauth2/v2/auth";
-            string zielSeite = "https:" + "//hkm-53." + "github.io" + "/BlazorApp1/";
-            string bereich = "https:" + "//www." + "googleapis.com" + "/auth/drive";
+            string authBasis = "https://google.com";
+            string zielSeite = "https://github.io";
+            string bereich = "https://googleapis.com";
 
             return authBasis +
                    "?client_id=" + Uri.EscapeDataString(volleClientId) +
@@ -32,7 +32,7 @@ namespace BlazorApp1.Services
             try
             {
                 string query = Uri.EscapeDataString($"name = '{exakterDateiname}' and trashed = false");
-                string suchUrl = "https:" + "//www." + $"://googleapis.com{query}&fields=files(id,name)";
+                string suchUrl = $"https://googleapis.com{query}&fields=files(id,name)";
 
                 var suchReq = new HttpRequestMessage(HttpMethod.Get, suchUrl);
                 suchReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -47,10 +47,10 @@ namespace BlazorApp1.Services
                 if (files.GetArrayLength() == 0)
                     return (null, exakterDateiname, null, $"Datei '{exakterDateiname}' wurde auf Google Drive nicht gefunden.");
 
-                string? fileId = files[0].GetProperty("id").GetString();
-                string fileName = files[0].GetProperty("name").GetString() ?? exakterDateiname;
+                string? fileId = files.GetProperty("id").GetString();
+                string fileName = files.GetProperty("name").GetString() ?? exakterDateiname;
 
-                string dlUrl = "https:" + "//www." + $"://googleapis.com{fileId}?alt=media";
+                string dlUrl = $"https://googleapis.com{fileId}?alt=media";
                 var dlReq = new HttpRequestMessage(HttpMethod.Get, dlUrl);
                 dlReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 var dlRes = await _http.SendAsync(dlReq);
@@ -71,7 +71,7 @@ namespace BlazorApp1.Services
         {
             try
             {
-                string uploadUrl = "https:" + "//www." + $"://googleapis.com{fileId}?uploadType=media";
+                string uploadUrl = $"https://googleapis.com{fileId}?uploadType=media";
                 var upReq = new HttpRequestMessage(HttpMethod.Patch, uploadUrl);
                 upReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 upReq.Content = new ByteArrayContent(daten);
@@ -87,5 +87,6 @@ namespace BlazorApp1.Services
                 return (false, ex.Message);
             }
         }
+
     }
 }
