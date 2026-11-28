@@ -33,7 +33,7 @@ namespace BlazorApp1.Services
             try
             {
                 string query = Uri.EscapeDataString($"name = '{exakterDateiname}' and trashed = false");
-                string suchUrl = $"https://googleapis.com{query}&fields=files(id,name)";
+                string suchUrl = $"https://www.googleapis.com{query}&fields=files(id,name)";
 
                 var suchReq = new HttpRequestMessage(HttpMethod.Get, suchUrl);
                 suchReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -51,7 +51,7 @@ namespace BlazorApp1.Services
                 string? fileId = files.GetProperty("id").GetString();
                 string fileName = files.GetProperty("name").GetString() ?? exakterDateiname;
 
-                string dlUrl = $"https://googleapis.com{fileId}?alt=media";
+                string dlUrl = $"https://www.googleapis.com{fileId}?alt=media";
                 var dlReq = new HttpRequestMessage(HttpMethod.Get, dlUrl);
                 dlReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 var dlRes = await _http.SendAsync(dlReq);
@@ -72,7 +72,7 @@ namespace BlazorApp1.Services
         {
             try
             {
-                string uploadUrl = $"https://googleapis.com{fileId}?uploadType=media";
+                string uploadUrl = $"https://www.googleapis.com{fileId}?uploadType=media";
                 var upReq = new HttpRequestMessage(HttpMethod.Patch, uploadUrl);
                 upReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 upReq.Content = new ByteArrayContent(daten);
