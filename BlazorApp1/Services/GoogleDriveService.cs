@@ -16,9 +16,9 @@ namespace BlazorApp1.Services
         public string GeneriereGoogleAuthUrl()
         {
             string volleClientId = ClientNummer + ".apps.googleusercontent.com";
-            string authBasis = "https://google.com";
-            string zielSeite = "https://github.io";
-            string bereich = "https://googleapis.com";
+            string authBasis = "https:" + "//accounts." + "google.com" + "/o/oauth2/v2/auth";
+            string zielSeite = "https:" + "//hkm-53." + "github.io" + "/BlazorApp1/";
+            string bereich = "https:" + "//www." + "googleapis.com" + "/auth/drive";
 
             return authBasis +
                    "?client_id=" + Uri.EscapeDataString(volleClientId) +
@@ -26,6 +26,7 @@ namespace BlazorApp1.Services
                    "&response_type=token" +
                    "&scope=" + Uri.EscapeDataString(bereich);
         }
+
 
         public async Task<(string? DateiId, string DateiName, byte[]? Bytes, string? Fehler)> LadeExakteDateiAsync(string token, string exakterDateiname)
         {
