@@ -223,10 +223,48 @@ namespace BlazorApp1.Services
                 {
                     zelle.Style = sheet.Cell(ersterDs, feld.SpaltenNummer).Style;
                 }
-
                 // Formelzellen niemals überschreiben!
                 if (feld.IstFormel || zelle.HasFormula)
                 {
                     continue;
                 }
 
+                string eingabe = feld.Wert?.Trim() ?? "";
+                if (string.IsNullOrEmpty(eingabe))
+                {
+                    zelle.Clear(XLClearOptions.Contents);
+                    continue;
+                }
+
+                if (feld.Typ.Equals("DatumAusw", StringComparison.OrdinalIgnoreCase) && DateTime.TryParse(eingabe, out var dt))
+                {
+                    zelle.Value = dt.Date;
+                }
+                else if (feld.Typ.Equals("ZeitAusw", StringComparison.OrdinalIgnoreCase) && TimeSpan.TryParse(eingabe, out var ts))
+                {
+                    zelle.Value = ts;
+                }
+                else if (feld.IstProzent)
+                {
+                    string ohneProzent = eingabe.Replace("%", "").Trim();
+                    if (double.TryParse(ohneProzent, NumberStyles.Any, _atCulture, out double pct))
+                        zelle.Value = pct > 1 ? pct / 100.0 : pct;
+                    else
+                        zelle.Value = eingabe;
+                }
+                else if (double.TryParse(eingabe, NumberStyles.Any, _atCulture, out double zahl))
+                {
+                    zelle.Value = zahl;
+                }
+                else
+                {
+                    zelle.Value = eingabe;
+                }
+            }
+
+            using var outStream = new MemoryStream();
+            workbook.SaveAs(outStream);
+            return outStream.ToArray();
+        }
+    }
+}
